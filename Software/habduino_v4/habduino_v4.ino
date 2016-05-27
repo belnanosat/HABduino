@@ -66,7 +66,7 @@
 /* BITS YOU WANT TO AMEND */
 
 #define MTX2_FREQ 434.485 // format 434.XXX  
-char callsign[9] = "CHANGEME";  // MAX 9 CHARACTERS!!
+char callsign[9] = "HABDUINO";  // MAX 9 CHARACTERS!!
 
 /* BELOW HERE YOU PROBABLY DON'T WANT TO BE CHANGING STUFF */
 
@@ -81,7 +81,7 @@ char callsign[9] = "CHANGEME";  // MAX 9 CHARACTERS!!
 static const uint8_t PROGMEM _sine_table[] = {
 #include "sine_table.h"
 };
-#define ASCII 7          // ASCII 7 or 8
+#define ASCII 8          // ASCII 7 or 8
 #define STOPBITS 2       // Either 1 or 2
 #define TXDELAY 0        // Delay between sentence TX's
 #define RTTY_BAUD 50     // RTTY Baud rate (Recommended = 50)
@@ -113,7 +113,11 @@ static const uint8_t PROGMEM _sine_table[] = {
 #define PHASE_DELTA_2200 (((TABLE_SIZE * 2200L) << 7) / PLAYBACK_RATE)
 #define PHASE_DELTA_XOR  (PHASE_DELTA_1200 ^ PHASE_DELTA_2200)
 
+#define STM32_TX 11
+#define STM32_RX 10
+
 SoftwareSerial MTX2_EN(12, MTX2_ENABLE); // RX, TX
+SoftwareSerial stm32(STM32_RX, STM32_TX);
 OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);
 
@@ -166,6 +170,9 @@ void setup()  {
   pinMode(MTX2_ENABLE, OUTPUT);
   pinMode(GPS_ON, OUTPUT);
   pinMode(BATTERY_ADC, INPUT);
+  pinMode(STM32_TX, OUTPUT);
+  pinMode(STM32_RX, INPUT);
+  stm32.begin(38400);
   blinkled(6);
   setMTX2Frequency();
   Serial.begin(9600);
@@ -191,6 +198,14 @@ void setup()  {
   sensors.begin();
   tempsensors=sensors.getDeviceCount();
 } 
+
+void send_int_to_stm32(int32_t val) {
+  stm32.write((val & (0xFF000000)) >> 24);
+  stm32.write((val & (0x00FF0000)) >> 16);
+  stm32.write((val & (0x0000FF00)) >> 8);
+  stm32.write((val & (0x000000FF)) >> 0);
+  stm32.flush();
+}
 
 void loop()   {
   oldhour=hour;
@@ -236,6 +251,12 @@ void loop()   {
   if(!lockvariables) {
 
     prepare_data();
+    // Transmit data to the stm32
+    send_int_to_stm32(lat);
+    send_int_to_stm32(lon);
+    send_int_to_stm32(alt);
+    stm32.write(sats);
+    stm32.flush();
     if(alt>maxalt && sats >= 4)
     {
       maxalt=alt;
